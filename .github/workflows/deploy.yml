@@ -2,10 +2,12 @@ name: Deploy to Hostinger (metodologoinfinity)
 
 on:
   push:
-    branches: [ "main" ]  # troque se usar outra branch
+    branches: [ "main" ] # troque se sua branch for outra
 
 env:
+  # enviado para o Vite (process.env.BASE_PATH)
   BASE_PATH: /metodologoinfinity/
+  # pasta de destino na Hostinger
   SERVER_DIR: /public_html/metodologoinfinity/
 
 jobs:
@@ -24,11 +26,11 @@ jobs:
       - name: Install deps
         run: npm install
 
-      # Build sem --base; o Vite lê BASE_PATH do env (vite.config.ts)
+      # NÃO passamos --base; o Vite lê BASE_PATH do env (vite.config.ts)
       - name: Build (usa BASE_PATH do env)
         run: npm run build
 
-      # Descobre onde saiu o index.html
+      # escolhe automaticamente onde saiu o index.html
       - name: Choose publish dir
         id: choose
         shell: bash
@@ -45,21 +47,17 @@ jobs:
       - name: List build output
         run: ls -la "${{ steps.choose.outputs.PUBDIR }}"
 
-      # Failsafe: se por algum motivo o Vite gerar /assets/... sem a subpasta,
-      # substitui no HTML final para /metodologoinfinity/assets/...
+      # ✅ failsafe: garante que /assets/ vira /metodologoinfinity/assets/
       - name: Force asset paths to subfolder (failsafe)
         shell: bash
         run: |
           FILE="${{ steps.choose.outputs.PUBDIR }}/index.html"
-          if grep -q 'src="/assets/' "$FILE" || grep -q 'href="/assets/' "$FILE"; then
+          if [ -f "$FILE" ]; then
             sed -i 's|src="/assets/|src="/metodologoinfinity/assets/|g' "$FILE"
             sed -i 's|href="/assets/|href="/metodologoinfinity/assets/|g' "$FILE"
-            echo "Corrigidos paths de assets no index.html"
-          else
-            echo "Paths de assets já corretos"
           fi
 
-      # Cria .htaccess sem heredoc (usando printf para evitar erro de YAML)
+      # cria .htaccess para SPA e não reescrever /assets
       - name: Create .htaccess (SPA)
         shell: bash
         run: |
@@ -75,7 +73,6 @@ jobs:
             '  RewriteRule ^ - [L]' \
             '  RewriteRule . /metodologoinfinity/index.html [L]' \
             '</IfModule>' > "$HT"
-          echo "Gerado $HT"
 
       - name: Deploy via FTP
         uses: SamKirkland/FTP-Deploy-Action@v4.3.5
