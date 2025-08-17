@@ -2,12 +2,10 @@ name: Deploy to Hostinger (metodologoinfinity)
 
 on:
   push:
-    branches: [ "main" ]   # troque se usar outra branch
+    branches: [ "main" ]  # troque se usar outra branch
 
 env:
-  # Enviado para o Vite (process.env.BASE_PATH)
   BASE_PATH: /metodologoinfinity/
-  # Pasta de destino na Hostinger
   SERVER_DIR: /public_html/metodologoinfinity/
 
 jobs:
@@ -26,11 +24,11 @@ jobs:
       - name: Install deps
         run: npm install
 
-      # NÃO passamos --base aqui; o base vem do process.env.BASE_PATH
+      # Build sem --base; o Vite lê BASE_PATH do env (vite.config.ts)
       - name: Build (usa BASE_PATH do env)
         run: npm run build
 
-      # Seu projeto gera dist/public/index.html; caímos nele primeiro
+      # Descobre onde saiu o index.html
       - name: Choose publish dir
         id: choose
         shell: bash
@@ -47,33 +45,42 @@ jobs:
       - name: List build output
         run: ls -la "${{ steps.choose.outputs.PUBDIR }}"
 
-      # .htaccess pra SPA e pra não reescrever /assets
-      - name: Create .htaccess (SPA)
+      # Failsafe: se por algum motivo o Vite gerar /assets/... sem a subpasta,
+      # substitui no HTML final para /metodologoinfinity/assets/...
+      - name: Force asset paths to subfolder (failsafe)
+        shell: bash
         run: |
-          cat > "${{ steps.choose.outputs.PUBDIR }}/.htaccess" << 'EOF'
-          Options -Indexes
-          DirectoryIndex index.html
-          <IfModule mod_rewrite.c>
-            RewriteEngine On
-            RewriteBase /metodologoinfinity/
-            # não reescrever arquivos/pastas reais
-            RewriteCond %{REQUEST_FILENAME} -f [OR]
-            RewriteCond %{REQUEST_FILENAME} -d
-            RewriteRule ^ - [L]
-            # fallback SPA
-            RewriteRule . /metodologoinfinity/index.html [L]
-          </IfModule>
-          EOF
-- name: Force asset paths to subfolder (failsafe)
-  run: |
-    FILE="${{ steps.choose.outputs.PUBDIR }}/index.html"
-    sed -i 's|src="/assets/|src="/metodologoinfinity/assets/|g' "$FILE"
-    sed -i 's|href="/assets/|href="/metodologoinfinity/assets/|g' "$FILE"
+          FILE="${{ steps.choose.outputs.PUBDIR }}/index.html"
+          if grep -q 'src="/assets/' "$FILE" || grep -q 'href="/assets/' "$FILE"; then
+            sed -i 's|src="/assets/|src="/metodologoinfinity/assets/|g' "$FILE"
+            sed -i 's|href="/assets/|href="/metodologoinfinity/assets/|g' "$FILE"
+            echo "Corrigidos paths de assets no index.html"
+          else
+            echo "Paths de assets já corretos"
+          fi
+
+      # Cria .htaccess sem heredoc (usando printf para evitar erro de YAML)
+      - name: Create .htaccess (SPA)
+        shell: bash
+        run: |
+          HT="${{ steps.choose.outputs.PUBDIR }}/.htaccess"
+          printf '%s\n' \
+            'Options -Indexes' \
+            'DirectoryIndex index.html' \
+            '<IfModule mod_rewrite.c>' \
+            '  RewriteEngine On' \
+            '  RewriteBase /metodologoinfinity/' \
+            '  RewriteCond %{REQUEST_FILENAME} -f [OR]' \
+            '  RewriteCond %{REQUEST_FILENAME} -d' \
+            '  RewriteRule ^ - [L]' \
+            '  RewriteRule . /metodologoinfinity/index.html [L]' \
+            '</IfModule>' > "$HT"
+          echo "Gerado $HT"
 
       - name: Deploy via FTP
         uses: SamKirkland/FTP-Deploy-Action@v4.3.5
         with:
-          server: ${{ secrets.FTP_SERVER }}     # host (ou IP) sem ftp:// e sem :21
+          server: ${{ secrets.FTP_SERVER }}     # host ou IP (sem ftp:// e sem :21)
           username: ${{ secrets.FTP_USERNAME }}
           password: ${{ secrets.FTP_PASSWORD }}
           port: ${{ secrets.FTP_PORT }}         # 21
