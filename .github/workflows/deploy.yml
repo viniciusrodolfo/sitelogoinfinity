@@ -65,6 +65,12 @@ jobs:
           </IfModule>
           EOF
 
+- name: Force asset paths to subfolder (failsafe)
+  run: |
+    FILE="${{ steps.choose.outputs.PUBDIR }}/index.html"
+    sed -i 's|src="/assets/|src="/metodologoinfinity/assets/|g' "$FILE"
+    sed -i 's|href="/assets/|href="/metodologoinfinity/assets/|g' "$FILE"
+
       - name: Deploy via FTP
         uses: SamKirkland/FTP-Deploy-Action@v4.3.5
         with:
