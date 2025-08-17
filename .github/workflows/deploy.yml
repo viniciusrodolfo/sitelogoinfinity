@@ -2,7 +2,7 @@ name: Deploy to Hostinger (metodologoinfinity)
 
 on:
   push:
-    branches: [ "main" ]  # troque para "master" se sua branch padrão for master
+    branches: [ "main" ]
 
 jobs:
   build-and-deploy:
@@ -17,13 +17,13 @@ jobs:
         with:
           node-version: "22"
 
-      - name: Install deps (CI)
-        run: npm ci
+      # use install (funciona sem package-lock)
+      - name: Install deps
+        run: npm install
 
       - name: Build with base path for subfolder
         run: npm run build -- --base=/metodologoinfinity/
 
-      # Detecta onde o build gerou o index.html (dist/public ou dist)
       - name: Choose publish dir
         id: choose
         run: |
@@ -32,10 +32,14 @@ jobs:
           elif [ -f "dist/index.html" ]; then
             echo "PUBDIR=dist" >> $GITHUB_OUTPUT
           else
-            echo "Nenhum index.html encontrado em dist/"; exit 1
+            echo "Nenhum index.html encontrado em dist/"; ls -la dist || true; exit 1
           fi
 
-      # Cria .htaccess para SPA e evita reescrever assets
+      - name: Show chosen publish dir
+        run: |
+          echo "Publicando a partir de: ${{ steps.choose.outputs.PUBDIR }}"
+          ls -la "${{ steps.choose.outputs.PUBDIR }}"
+
       - name: Create .htaccess (SPA)
         run: |
           cat > "${{ steps.choose.outputs.PUBDIR }}/.htaccess" << 'EOF'
@@ -52,9 +56,7 @@ jobs:
           EOF
 
       - name: Deploy via FTP
-- uses: SamKirkland/FTP-Deploy-Action@v4
-+ uses: SamKirkland/FTP-Deploy-Action@v4.3.5
-
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
         with:
           server: ${{ secrets.FTP_SERVER }}
           username: ${{ secrets.FTP_USERNAME }}
@@ -63,3 +65,4 @@ jobs:
           local-dir: ${{ steps.choose.outputs.PUBDIR }}/
           server-dir: /public_html/metodologoinfinity/
           dangerous-clean-slate: true
+          log-level: verbose
