@@ -1,0 +1,63 @@
+name: Deploy to Hostinger (metodologoinfinity)
+
+on:
+  push:
+    branches: [ "main" ]  # troque para "master" se sua branch padrão for master
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install deps (CI)
+        run: npm ci
+
+      - name: Build with base path for subfolder
+        run: npm run build -- --base=/metodologoinfinity/
+
+      # Detecta onde o build gerou o index.html (dist/public ou dist)
+      - name: Choose publish dir
+        id: choose
+        run: |
+          if [ -f "dist/public/index.html" ]; then
+            echo "PUBDIR=dist/public" >> $GITHUB_OUTPUT
+          elif [ -f "dist/index.html" ]; then
+            echo "PUBDIR=dist" >> $GITHUB_OUTPUT
+          else
+            echo "Nenhum index.html encontrado em dist/"; exit 1
+          fi
+
+      # Cria .htaccess para SPA e evita reescrever assets
+      - name: Create .htaccess (SPA)
+        run: |
+          cat > "${{ steps.choose.outputs.PUBDIR }}/.htaccess" << 'EOF'
+          Options -Indexes
+          DirectoryIndex index.html
+          <IfModule mod_rewrite.c>
+            RewriteEngine On
+            RewriteBase /metodologoinfinity/
+            RewriteCond %{REQUEST_FILENAME} -f [OR]
+            RewriteCond %{REQUEST_FILENAME} -d
+            RewriteRule ^ - [L]
+            RewriteRule . /metodologoinfinity/index.html [L]
+          </IfModule>
+          EOF
+
+      - name: Deploy via FTP
+        uses: SamKirkland/FTP-Deploy-Action@v4
+        with:
+          server: ${{ secrets.FTP_SERVER }}
+          username: ${{ secrets.FTP_USERNAME }}
+          password: ${{ secrets.FTP_PASSWORD }}
+          port: ${{ secrets.FTP_PORT }}
+          local-dir: ${{ steps.choose.outputs.PUBDIR }}/
+          server-dir: /public_html/metodologoinfinity/
+          dangerous-clean-slate: true
