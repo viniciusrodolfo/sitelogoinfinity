@@ -3,18 +3,18 @@ import react from "@vitejs/plugin-react"
 import path from "path"
 import runtimeErrorOverlay from "@replit/vite-plugin-runtime-error-modal"
 
-// Config assíncrona pra permitir importar o plugin da Replit só em dev
+// config assíncrona para carregar o plugin do Replit só em dev
 export default defineConfig(async () => {
   const plugins = [react(), runtimeErrorOverlay()]
 
-  // Ativa o cartographer da Replit somente em dev dentro do Replit
+  // ativa o cartographer apenas em dev dentro do Replit
   if (process.env.NODE_ENV !== "production" && process.env.REPL_ID !== undefined) {
     const { cartographer } = await import("@replit/vite-plugin-cartographer")
     plugins.push(cartographer())
   }
 
   return {
-    // 👇 base lida de variável de ambiente (Actions) ou cai em "/"
+    // 🔑 base lida da env (definida no Actions). Localmente cai em "/"
     base: process.env.BASE_PATH ?? "/",
 
     plugins,
@@ -27,10 +27,10 @@ export default defineConfig(async () => {
       },
     },
 
-    // seu front fica em /client
+    // sua app React está em /client
     root: path.resolve(import.meta.dirname, "client"),
 
-    // saída que você já usa: dist/public
+    // saída que você já usa
     build: {
       outDir: path.resolve(import.meta.dirname, "dist/public"),
       emptyOutDir: true,
