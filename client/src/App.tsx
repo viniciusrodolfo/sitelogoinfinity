@@ -1,29 +1,18 @@
-import { Switch, Route } from "wouter";
-import { queryClient } from "./lib/queryClient";
-import { QueryClientProvider } from "@tanstack/react-query";
-import { Toaster } from "@/components/ui/toaster";
-import { TooltipProvider } from "@/components/ui/tooltip";
-import Landing from "@/pages/landing";
-import NotFound from "@/pages/not-found";
+import { createRouter, RouterProvider } from "@tanstack/react-router";
+import { routeTree } from "./routeTree"; // ou "./routeTree.gen" / "./routes"
 
-function Router() {
-  return (
-    <Switch>
-      <Route path="/" component={Landing} />
-      <Route component={NotFound} />
-    </Switch>
-  );
+const router = createRouter({
+  routeTree,
+  basepath: import.meta.env.BASE_URL, // ⬅️ importante para rodar em /metodologoinfinity/
+});
+
+// Necessário para tipagem do TanStack
+declare module "@tanstack/react-router" {
+  interface Register {
+    router: typeof router;
+  }
 }
 
-function App() {
-  return (
-    <QueryClientProvider client={queryClient}>
-      <TooltipProvider>
-        <Toaster />
-        <Router />
-      </TooltipProvider>
-    </QueryClientProvider>
-  );
+export default function App() {
+  return <RouterProvider router={router} />;
 }
-
-export default App;
