@@ -64,7 +64,6 @@ jobs:
             RewriteRule . /metodologoinfinity/index.html [L]
           </IfModule>
           EOF
-
 - name: Force asset paths to subfolder (failsafe)
   run: |
     FILE="${{ steps.choose.outputs.PUBDIR }}/index.html"
