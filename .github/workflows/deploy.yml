@@ -2,7 +2,11 @@ name: Deploy to Hostinger (metodologoinfinity)
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [ "main" ]   # troque se sua branch for outra
+
+env:
+  BASE_PATH: /metodologoinfinity/
+  SERVER_DIR: /public_html/metodologoinfinity/
 
 jobs:
   build-and-deploy:
@@ -17,15 +21,44 @@ jobs:
         with:
           node-version: "22"
 
-      # use install (funciona sem package-lock)
+      # 1) Descobre automaticamente onde está o package.json
+      - name: Find project directory
+        id: find
+        shell: bash
+        run: |
+          if [ -f "package.json" ]; then
+            echo "DIR=." >> $GITHUB_OUTPUT
+          else
+            CANDIDATE=$(git ls-files | grep -E 'package\.json$' | head -n1 | xargs dirname)
+            if [ -z "$CANDIDATE" ]; then
+              echo "Nenhum package.json encontrado no repo"; exit 1
+            fi
+            echo "DIR=$CANDIDATE" >> $GITHUB_OUTPUT
+          fi
+          echo "Projeto: ${{ github.repository }} em $(pwd)"
+          echo "DIR escolhido: ${{ steps.find.outputs.DIR }}"
+
+      # 2) Instala dependências
       - name: Install deps
+        working-directory: ${{ steps.find.outputs.DIR }}
         run: npm install
 
-      - name: Build with base path for subfolder
-        run: npm run build -- --base=/metodologoinfinity/
+      # 3) Garante que existe script build
+      - name: Check build script
+        working-directory: ${{ steps.find.outputs.DIR }}
+        run: |
+          node -e "const p=require('./package.json'); if(!p.scripts || !p.scripts.build){console.error('Faltou script \"build\" no package.json'); process.exit(1)}"
 
+      # 4) Build com base para a subpasta
+      - name: Build with base path
+        working-directory: ${{ steps.find.outputs.DIR }}
+        run: npm run build -- --base=${{ env.BASE_PATH }}
+
+      # 5) Descobre onde saiu o index.html
       - name: Choose publish dir
         id: choose
+        working-directory: ${{ steps.find.outputs.DIR }}
+        shell: bash
         run: |
           if [ -f "dist/public/index.html" ]; then
             echo "PUBDIR=dist/public" >> $GITHUB_OUTPUT
@@ -34,35 +67,39 @@ jobs:
           else
             echo "Nenhum index.html encontrado em dist/"; ls -la dist || true; exit 1
           fi
+          echo "PUBDIR escolhido: ${{ steps.choose.outputs.PUBDIR }}"
 
-      - name: Show chosen publish dir
-        run: |
-          echo "Publicando a partir de: ${{ steps.choose.outputs.PUBDIR }}"
-          ls -la "${{ steps.choose.outputs.PUBDIR }}"
+      # 6) Log do que vamos publicar
+      - name: List build output
+        run: ls -la "${{ steps.find.outputs.DIR }}/${{ steps.choose.outputs.PUBDIR }}"
 
+      # 7) Cria .htaccess para SPA e para não reescrever assets
       - name: Create .htaccess (SPA)
         run: |
-          cat > "${{ steps.choose.outputs.PUBDIR }}/.htaccess" << 'EOF'
+          cat > "${{ steps.find.outputs.DIR }}/${{ steps.choose.outputs.PUBDIR }}/.htaccess" << 'EOF'
           Options -Indexes
           DirectoryIndex index.html
           <IfModule mod_rewrite.c>
             RewriteEngine On
             RewriteBase /metodologoinfinity/
+            # não reescrever arquivos/pastas reais
             RewriteCond %{REQUEST_FILENAME} -f [OR]
             RewriteCond %{REQUEST_FILENAME} -d
             RewriteRule ^ - [L]
+            # fallback SPA
             RewriteRule . /metodologoinfinity/index.html [L]
           </IfModule>
           EOF
 
+      # 8) Deploy via FTP (versão fixa da action)
       - name: Deploy via FTP
         uses: SamKirkland/FTP-Deploy-Action@v4.3.5
         with:
-          server: ${{ secrets.FTP_SERVER }}
+          server: ${{ secrets.FTP_SERVER }}     # host ou IP
           username: ${{ secrets.FTP_USERNAME }}
           password: ${{ secrets.FTP_PASSWORD }}
-          port: ${{ secrets.FTP_PORT }}
-          local-dir: ${{ steps.choose.outputs.PUBDIR }}/
-          server-dir: /public_html/metodologoinfinity/
+          port: ${{ secrets.FTP_PORT }}         # 21
+          local-dir: ${{ steps.find.outputs.DIR }}/${{ steps.choose.outputs.PUBDIR }}/
+          server-dir: ${{ env.SERVER_DIR }}
           dangerous-clean-slate: true
           log-level: verbose
